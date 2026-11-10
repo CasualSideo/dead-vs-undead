@@ -68,6 +68,7 @@ button.t{background:none;padding:6px;font-size:14px;font-weight:400;opacity:.7;t
 @keyframes cfade{to{opacity:0}}
 .ct{color:#9fe7b4}.ca{color:#bbb}
 #chatbar{display:none;gap:8px;align-items:center;margin-top:6px}#chat.open #chatbar{display:flex}
+#voice{position:absolute;left:24px;bottom:94px;font-size:13px;font-weight:700;color:#9fe7b4}
 #chatin{flex:1;pointer-events:auto;background:#000b;border:1px solid #fff6;color:#fff;border-radius:5px;padding:7px 10px;font:inherit;outline:none}
 </style>
 </head>
@@ -81,6 +82,7 @@ button.t{background:none;padding:6px;font-size:14px;font-weight:400;opacity:.7;t
   <div id="ammo"><small id="wn" style="display:block;text-align:right"></small><span id="am">15</span><small id="mag"> / 15</small></div>
   <div id="vig"></div><div id="zap" style="position:absolute;inset:0;background:radial-gradient(ellipse at center,#0000 35%,#6fd0ffaa);opacity:0"></div>
   <div id="dead"></div>
+  <div id="voice"></div>
   <div id="chat"><div id="chatlog"></div><div id="chatbar"><b id="chatlbl"></b><input id="chatin" maxlength="120" autocomplete="off" spellcheck="false" placeholder="Message, Enter to send, Esc to cancel"></div></div>
 </div>
 
@@ -117,7 +119,7 @@ button.t{background:none;padding:6px;font-size:14px;font-weight:400;opacity:.7;t
     <button class="t" onclick="showStep('classStep')">Change class</button>
   </div>
 </div>
-<div id="pause" class="ov hide"><h1 style="font-size:clamp(32px,6vw,56px)">Paused</h1><p id="pnote"></p><button class="w">Click to resume</button><button class="t" id="pfr" onclick="event.stopPropagation();openFriends()">Friends</button><button class="t" onclick="event.stopPropagation();exitToMenu()">Exit to main menu</button></div>
+<div id="pause" class="ov hide"><h1 style="font-size:clamp(32px,6vw,56px)">Paused</h1><p id="pnote"></p><div id="vmute" class="row"></div><button class="w">Click to resume</button><button class="t" id="pfr" onclick="event.stopPropagation();openFriends()">Friends</button><button class="t" onclick="event.stopPropagation();exitToMenu()">Exit to main menu</button></div>
 <div id="clsov" class="ov hide"><h1 style="font-size:clamp(28px,5vw,48px)">Choose your class</h1><p id="cnote"></p><div class="row cgrid" id="ccls"></div><button class="t" onclick="closeCls()">Close (C)</button></div>
 <div id="acct" class="ov hide" style="z-index:12"><h1 style="font-size:clamp(30px,5vw,50px)">Account</h1><p>Pick a gametag (3-14 letters, numbers or _) and a password. There is no password reset, so remember it.</p><input id="atag" maxlength="14" placeholder="Gametag" autocomplete="username" spellcheck="false"><input id="apw" type="password" maxlength="64" placeholder="Password (6+ characters)" autocomplete="current-password"><p id="aerr" style="color:#ffe08a;min-height:1.2em"></p><div class="row"><button class="w" id="asi">Sign in</button><button class="b" id="arg">Create account</button></div><button class="t" onclick="acct.classList.add('hide')">Cancel</button></div>
 <div id="frn" class="ov hide" style="z-index:12"><h1 style="font-size:clamp(30px,5vw,50px)">Friends</h1><div class="pnl"><div class="row" style="flex-wrap:nowrap"><input id="ftag" maxlength="14" placeholder="Add a friend by gametag" autocomplete="off" spellcheck="false" style="flex:1;width:auto"><button class="w" id="fadd" style="padding:10px 20px">Add</button></div><p id="fmsg" style="min-height:1.2em;color:#ffe08a"></p><div id="flist" class="pnl" style="width:100%"></div></div><button class="t" onclick="frn.classList.add('hide')">Close</button></div>
@@ -636,7 +638,7 @@ function joinParty(){
   if(code.length<4)return netErr('Enter the party code.');
   if(!window.Peer)return netErr('Could not load PeerJS. Are you online?');
   netErr('Connecting...');net.code=code;if(net.peer)net.peer.destroy();
-  const p=new Peer();net.peer=p;
+  const p=new Peer();net.peer=p;vHook(p);
   p.on('error',e=>netErr(e.type==='peer-unavailable'?'No party found with that code.':'Connection error: '+e.type));
   p.on('open',()=>{const c=p.connect('rvb-'+code);net.conn=c;
     c.on('open',()=>{net.cl=true;net.on=true;c.send({t:'hello'});});
@@ -645,11 +647,11 @@ function joinParty(){
 function openParty(){
   if(!window.Peer){note('PeerJS failed to load, so the party is offline');return;}
   const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let code='';for(let i=0;i<5;i++)code+=A[Math.random()*A.length|0];
-  const p=new Peer('rvb-'+code);net.peer=p;
+  const p=new Peer('rvb-'+code);net.peer=p;vHook(p);
   p.on('error',e=>{if(e.type==='unavailable-id'){p.destroy();openParty();}else note('Party error: '+e.type);});
   p.on('open',()=>{net.host=true;net.on=true;net.code=code;$('party').textContent='Party code: '+code+' (share it with friends)';$('party').classList.remove('hide');});
   p.on('connection',c=>{net.conns.push(c);c.on('data',m=>onHost(c,m));
-    c.on('close',()=>{net.conns=net.conns.filter(x=>x!==c);const e=c.ent;if(e){e.remote=false;e.name=botName();net.n=0;note(esc(e.name)+' left, a bot took the slot');}});});
+    c.on('close',()=>{net.conns=net.conns.filter(x=>x!==c);const e=c.ent;if(e){e.remote=false;e.name=botName();net.n=0;note(esc(e.name)+' left, a bot took the slot');}voiceSync();});});
 }
 function onHost(c,m){
   if(m.t==='hello')return c.send(state==='play'?{t:'init',mode,map:curMap,size:TEAM_SIZE}:{t:'wait'}); // host still in the menu: joiners wait
@@ -658,7 +660,7 @@ function onHost(c,m){
     const b=m.team==='red'?0:TEAM_SIZE,e=ents.slice(b,b+TEAM_SIZE).find(x=>!x.isPlayer&&!x.remote);
     if(!e)return c.send({t:'full'});
     e.remote=true;c.ent=e;e.conn=c;if(CLASSES[m.cls])e.cls=m.cls;e.name=String(m.name||'Player').replace(/\s+/g,' ').slice(0,14);e.tx=e.x;e.ty=e.y;e.tz=e.z;net.n=0;
-    c.send({t:'welcome',id:ents.indexOf(e)});note(tag(e)+' joined');return;
+    c.send({t:'welcome',id:ents.indexOf(e)});note(tag(e)+' joined');voiceSync();return;
   }
   const e=c.ent;if(!e)return;
   if(m.t==='st'){e.tx=m.x;e.ty=m.y;e.tz=m.z;e.yaw=m.w;e.k=m.k;e.uber=m.u?1:0;e.phase=!!m.i;e.blk=!!m.b;if(CLASSES[m.c])e.cls=m.c;}
@@ -684,6 +686,7 @@ function onClient(m){
   else if(m.t==='s')applySnap(m);
   else if(m.t==='fx')fxShow(m);
   else if(m.t==='rk'&&player)launchRocket(ents[m.s],V3(m.o),V3(m.d),true);
+  else if(m.t==='vox')vSetRoster(m.r);
   else if(m.t==='chat')addChat(ents[m.i],m.m,!!m.tm);
   else if(m.t==='note')note(m.h);
   else if(m.t==='stun'&&player&&player.alive){player.stun=Math.max(player.stun||0,m.d);scoped=false;dmgFlash=Math.min(.9,dmgFlash+.4);snd(300,.3,.15,'sawtooth');}
@@ -773,7 +776,7 @@ function chooseClass(k){
     applyClass(k);pendingClass=null;wi=prevW=0;swap=0;scoped=false;spin=0;healTgt=null;uberCh=0;stealthT=0;stealthCd=0;reload=0;refill();weaponHud();
   }else{pendingClass=k;note('<span style="color:#fff">Switching to '+CLASSES[k].name+' when you respawn</span>');}
 }
-function buildPause(){$('pnote').textContent='Press C at any time to change class.'+(pendingClass?' Switching to '+CLASSES[pendingClass].name+' on respawn.':'');}
+function buildPause(){vMuteUI();$('pnote').textContent='Press C at any time to change class. Hold V to talk to your team (in a party).'+(pendingClass?' Switching to '+CLASSES[pendingClass].name+' on respawn.':'');}
 let clsOpen=false;
 function buildCls(){
   $('ccls').innerHTML=Object.keys(CLASSES).map(k=>'<button class="m" style="'+(k===(pendingClass||myClass)?'outline:2px solid #fff':'')+'" onclick="chooseClass(\''+k+'\');closeCls()">'+cic(k)+'<span><b>'+CLASSES[k].name+'</b><small>'+CLASSES[k].desc+'</small></span></button>').join('');
@@ -965,6 +968,66 @@ function hostChat(e,x,team){ // the host shows the message and forwards it only 
 }
 $('chatin').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendChat();}else if(e.key==='Escape')closeChat();});
 document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement)closeChat();});
+
+// ---- Team voice chat: hold V to talk. Voice calls go straight between teammates over PeerJS (WebRTC); the host only shares who is on whose team ----
+const vox={mic:null,talk:false,warned:false,roster:new Map(),calls:new Map(),pend:new Map(),aud:new Map(),muted:new Set()};
+function lnote(t){const d=document.createElement('div');d.textContent=t;$('feed').appendChild(d);setTimeout(()=>d.remove(),4500);}
+const vTrack=on=>{if(vox.mic)vox.mic.getAudioTracks().forEach(t=>t.enabled=on);};
+async function voiceKey(down){
+  if(!down){vox.talk=false;vTrack(false);return;}
+  if(!net.on||!net.peer){if(!vox.warned){vox.warned=true;lnote('Voice chat works in a party with friends.');}return;}
+  vox.talk=true;
+  if(!vox.mic){
+    try{vox.mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});}
+    catch(e){vox.talk=false;lnote('Microphone blocked. Allow it in your browser, then hold V again.');return;}
+    vTrack(false);vCallAll();
+  }
+  vTrack(vox.talk);
+}
+function vCallAll(){ // my voice travels over calls that I start; I hear teammates over the calls they start
+  if(!vox.mic||!net.peer)return;
+  for(const id of vox.roster.keys()){
+    if(vox.calls.has(id))continue;
+    const c=net.peer.call(id,vox.mic);if(!c)continue;vox.calls.set(id,c);
+    const gone=()=>{if(vox.calls.get(id)===c)vox.calls.delete(id);};c.on('close',gone);c.on('error',gone);
+  }
+}
+function vSetRoster(r){
+  vox.roster=new Map(r);
+  for(const [id,c] of [...vox.calls])if(!vox.roster.has(id)){c.close();vox.calls.delete(id);}
+  for(const id of [...vox.aud.keys()])if(!vox.roster.has(id))vStop(id);
+  for(const [id,call] of [...vox.pend])if(vox.roster.has(id)){vox.pend.delete(id);vAnswer(call);}
+  vCallAll();vMuteUI();
+}
+function voiceSync(){ // host: tell every player who is on their team
+  if(!net.host||!net.peer||!player)return;
+  const L=net.conns.filter(c=>c.open&&c.ent);
+  for(const c of L){const r=L.filter(o=>o!==c&&o.ent.team===c.ent.team).map(o=>[o.peer,o.ent.name]);if(player.team===c.ent.team)r.push([net.peer.id,player.name]);c.send({t:'vox',r});}
+  vSetRoster(L.filter(o=>o.ent.team===player.team).map(o=>[o.peer,o.ent.name]));
+}
+function vHook(p){p.on('call',call=>{
+  if(vox.roster.has(call.peer))vAnswer(call);
+  else{vox.pend.set(call.peer,call);setTimeout(()=>{if(vox.pend.get(call.peer)===call){vox.pend.delete(call.peer);call.close();}},8000);} // only teammates are answered
+});}
+function vAnswer(call){call.answer();call.on('stream',st=>vPlay(call.peer,st));call.on('close',()=>vStop(call.peer));call.on('error',()=>vStop(call.peer));}
+function vPlay(id,st){
+  vStop(id);const a=new Audio();a.srcObject=st;a.autoplay=true;a.muted=vox.muted.has(id);a.play().catch(()=>{});
+  const o={a,an:null,src:null};
+  if(ac){try{o.src=ac.createMediaStreamSource(st);o.an=ac.createAnalyser();o.an.fftSize=256;o.buf=new Uint8Array(256);o.src.connect(o.an);}catch(e){}}
+  vox.aud.set(id,o);
+}
+function vStop(id){const o=vox.aud.get(id);if(!o)return;o.a.pause();o.a.srcObject=null;try{o.src&&o.src.disconnect();}catch(e){}vox.aud.delete(id);}
+function vMuteUI(){
+  const box=$('vmute');if(!box)return;box.innerHTML='';
+  for(const [id,name] of vox.roster){const b=document.createElement('button');b.className='gz';b.textContent=(vox.muted.has(id)?'Unmute ':'Mute ')+name;
+    b.onclick=e=>{e.stopPropagation();vox.muted.has(id)?vox.muted.delete(id):vox.muted.add(id);const o=vox.aud.get(id);if(o)o.a.muted=vox.muted.has(id);vMuteUI();};box.appendChild(b);}
+}
+setInterval(()=>{ // "who is talking" readout
+  const t=[];if(vox.talk&&vox.mic)t.push('You');
+  for(const [id,o] of vox.aud){if(!o.an||vox.muted.has(id))continue;o.an.getByteTimeDomainData(o.buf);let m=0;for(let i=0;i<o.buf.length;i++)m=Math.max(m,Math.abs(o.buf[i]-128));if(m>10)t.push(vox.roster.get(id)||'Teammate');}
+  const txt=t.length?'🎙 '+t.join(', '):'';if($('voice').textContent!==txt)$('voice').textContent=txt;
+},120);
+document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement)voiceKey(false);});
 const tag=e=>'<span class="'+e.team[0]+'">'+esc(e.name)+'</span>';
 const ftag=t=>'<span class="'+t[0]+'">'+NAME[t]+' flag</span>';
 function note(h){const d=document.createElement('div');d.innerHTML=h;$('feed').appendChild(d);setTimeout(()=>d.remove(),4500);if(net.host&&h.indexOf('style=')<0)bc({t:'note',h});}
@@ -1660,10 +1723,10 @@ function loop(now){
 requestAnimationFrame(loop);
 
 // ---- Input ----
-addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;if((e.code==='KeyT'||e.code==='KeyY')&&!e.repeat&&state==='play'&&locked&&player&&!clsOpen){e.preventDefault();openChat(e.code==='KeyY');return;}if(e.code==='Tab'){e.preventDefault();if(state==='play'&&locked){tabOn=true;$('lb2').innerHTML=tabHtml();$('tab').classList.remove('hide');}return;}keys[e.code]=true;if(e.code==='KeyQ'&&!e.repeat)switchWeapon();if(e.code==='KeyC'&&!e.repeat&&state==='play'){if(clsOpen)closeCls();else openCls();}if(e.code==='KeyE'&&!e.repeat)cloak();if(e.code==='Space'||(e.ctrlKey&&state==='play'))e.preventDefault();});
+addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;if((e.code==='KeyT'||e.code==='KeyY')&&!e.repeat&&state==='play'&&locked&&player&&!clsOpen){e.preventDefault();openChat(e.code==='KeyY');return;}if(e.code==='KeyV'&&!e.repeat&&state==='play'&&locked&&player&&!chatOpen)voiceKey(true);if(e.code==='Tab'){e.preventDefault();if(state==='play'&&locked){tabOn=true;$('lb2').innerHTML=tabHtml();$('tab').classList.remove('hide');}return;}keys[e.code]=true;if(e.code==='KeyQ'&&!e.repeat)switchWeapon();if(e.code==='KeyC'&&!e.repeat&&state==='play'){if(clsOpen)closeCls();else openCls();}if(e.code==='KeyE'&&!e.repeat)cloak();if(e.code==='Space'||(e.ctrlKey&&state==='play'))e.preventDefault();});
 // Browsers can't block Ctrl+W (crouch + forward), so ask before the tab closes mid-match
 addEventListener('beforeunload',e=>{if(state==='play'){e.preventDefault();e.returnValue='';}});
-addEventListener('keyup',e=>{keys[e.code]=false;if(e.code==='Tab'){tabOn=false;$('tab').classList.add('hide');}});
+addEventListener('keyup',e=>{keys[e.code]=false;if(e.code==='KeyV')voiceKey(false);if(e.code==='Tab'){tabOn=false;$('tab').classList.add('hide');}});
 addEventListener('mousedown',e=>{if(e.button===0){mouseDown=true;trigger=true;}if(e.button===2&&locked)scoped=true;});
 addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('mouseup',e=>{if(e.button===0){mouseDown=false;trigger=false;}if(e.button===2)scoped=false;});
