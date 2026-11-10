@@ -62,6 +62,13 @@ button.t{background:none;padding:6px;font-size:14px;font-weight:400;opacity:.7;t
 .frow button,#toast button{font-size:13px;padding:6px 12px}
 #toast{position:fixed;top:74px;left:50%;transform:translateX(-50%);z-index:20;display:flex;flex-direction:column;gap:8px}
 #toast div{background:#0b1020ee;border:1px solid #fff5;border-radius:8px;padding:10px 14px;display:flex;gap:10px;align-items:center}
+#chat{position:absolute;left:24px;bottom:118px;width:min(440px,60vw);font-size:14px;font-weight:600;line-height:1.5}
+#chatlog .cm{padding:2px 8px;background:#0006;border-radius:4px;margin-top:2px;width:fit-content;max-width:100%;word-break:break-word;animation:cfade .6s 9s forwards}
+#chat.open #chatlog .cm{animation:none;opacity:1}
+@keyframes cfade{to{opacity:0}}
+.ct{color:#9fe7b4}.ca{color:#bbb}
+#chatbar{display:none;gap:8px;align-items:center;margin-top:6px}#chat.open #chatbar{display:flex}
+#chatin{flex:1;pointer-events:auto;background:#000b;border:1px solid #fff6;color:#fff;border-radius:5px;padding:7px 10px;font:inherit;outline:none}
 </style>
 </head>
 <body>
@@ -74,6 +81,7 @@ button.t{background:none;padding:6px;font-size:14px;font-weight:400;opacity:.7;t
   <div id="ammo"><small id="wn" style="display:block;text-align:right"></small><span id="am">15</span><small id="mag"> / 15</small></div>
   <div id="vig"></div><div id="zap" style="position:absolute;inset:0;background:radial-gradient(ellipse at center,#0000 35%,#6fd0ffaa);opacity:0"></div>
   <div id="dead"></div>
+  <div id="chat"><div id="chatlog"></div><div id="chatbar"><b id="chatlbl"></b><input id="chatin" maxlength="120" autocomplete="off" spellcheck="false" placeholder="Message, Enter to send, Esc to cancel"></div></div>
 </div>
 
 <div id="party" class="hide" style="position:fixed;top:8px;left:10px;z-index:9;font-size:13px;font-weight:700;opacity:.85;text-shadow:0 1px 3px #000"></div>
@@ -657,6 +665,7 @@ function onHost(c,m){
   else if(m.t==='hit'){const v=ents[m.v];if(v&&e.alive&&m.a>0&&m.a<=130)damage(v,m.a,e,!!m.h);}
   else if(m.t==='heal'){const v=ents[m.v];if(v&&v.alive){v.hp=Math.min(100,v.hp+Math.min(m.g,5));v.healer=e;v.healT=performance.now();}}
   else if(m.t==='resp'){if(!e.alive){e.alive=true;e.hp=100;unrag(e);}}
+  else if(m.t==='chat'){if(performance.now()-(e.chT||0)>400){e.chT=performance.now();hostChat(e,m.m,!!m.tm);}}
   else if(m.t==='ci'){addCircle(m.x,m.y,m.z,e.team,e);bc(m,c);}
   else if(m.t==='shield'){shieldTeam(e);}
   else if(m.t==='kn'){const v=ents[m.v];if(v&&v.team!==e.team&&Math.abs(m.x)<=20&&Math.abs(m.z)<=20)knock(v,m.x,m.z);}
@@ -675,6 +684,7 @@ function onClient(m){
   else if(m.t==='s')applySnap(m);
   else if(m.t==='fx')fxShow(m);
   else if(m.t==='rk'&&player)launchRocket(ents[m.s],V3(m.o),V3(m.d),true);
+  else if(m.t==='chat')addChat(ents[m.i],m.m,!!m.tm);
   else if(m.t==='note')note(m.h);
   else if(m.t==='stun'&&player&&player.alive){player.stun=Math.max(player.stun||0,m.d);scoped=false;dmgFlash=Math.min(.9,dmgFlash+.4);snd(300,.3,.15,'sawtooth');}
   else if(m.t==='ci'&&player)addCircle(m.x,m.y,m.z,m.m,null);
@@ -934,6 +944,27 @@ function pickClass(k){
   showStep('teamStep');
 }
 $('classes').innerHTML=Object.keys(CLASSES).map(k=>'<button class="m" onclick="pickClass(\''+k+'\')">'+cic(k)+'<span><b>'+CLASSES[k].name+'</b><small>'+CLASSES[k].desc+'</small></span></button>').join('');
+
+// ---- Chat: T talks to everyone, Y talks to your team ----
+let chatOpen=false,chatTeam=false;
+function addChat(e,text,team){
+  if(!e)return;const log=$('chatlog'),d=document.createElement('div');d.className='cm';
+  d.innerHTML='<span class="'+(team?'ct':'ca')+'">['+(team?'TEAM':'ALL')+']</span> '+tag(e)+': '+esc(text);
+  log.appendChild(d);while(log.children.length>10)log.firstChild.remove();
+}
+function openChat(team){chatOpen=true;chatTeam=team;for(const k in keys)keys[k]=false;mouseDown=trigger=scoped=false;$('chat').classList.add('open');const i=$('chatin');$('chatlbl').textContent=team?'TEAM':'ALL';$('chatlbl').className=team?'ct':'ca';i.value='';i.focus();}
+function closeChat(){if(!chatOpen)return;chatOpen=false;$('chat').classList.remove('open');$('chatin').blur();}
+function sendChat(){
+  const x=$('chatin').value.replace(/\s+/g,' ').trim().slice(0,120),team=chatTeam;closeChat();if(!x||!player)return;
+  if(net.cl)nsend({t:'chat',m:x,tm:team?1:0});else hostChat(player,x,team);
+}
+function hostChat(e,x,team){ // the host shows the message and forwards it only to the people it is meant for
+  x=String(x).slice(0,120);if(!x)return;
+  if(!team||!player||e.team===player.team)addChat(e,x,team);
+  for(const c of net.conns)if(c.open&&c.ent&&(!team||c.ent.team===e.team))c.send({t:'chat',i:ents.indexOf(e),m:x,tm:team?1:0});
+}
+$('chatin').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendChat();}else if(e.key==='Escape')closeChat();});
+document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement)closeChat();});
 const tag=e=>'<span class="'+e.team[0]+'">'+esc(e.name)+'</span>';
 const ftag=t=>'<span class="'+t[0]+'">'+NAME[t]+' flag</span>';
 function note(h){const d=document.createElement('div');d.innerHTML=h;$('feed').appendChild(d);setTimeout(()=>d.remove(),4500);if(net.host&&h.indexOf('style=')<0)bc({t:'note',h});}
@@ -1629,7 +1660,7 @@ function loop(now){
 requestAnimationFrame(loop);
 
 // ---- Input ----
-addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;if(e.code==='Tab'){e.preventDefault();if(state==='play'&&locked){tabOn=true;$('lb2').innerHTML=tabHtml();$('tab').classList.remove('hide');}return;}keys[e.code]=true;if(e.code==='KeyQ'&&!e.repeat)switchWeapon();if(e.code==='KeyC'&&!e.repeat&&state==='play'){if(clsOpen)closeCls();else openCls();}if(e.code==='KeyE'&&!e.repeat)cloak();if(e.code==='Space'||(e.ctrlKey&&state==='play'))e.preventDefault();});
+addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;if((e.code==='KeyT'||e.code==='KeyY')&&!e.repeat&&state==='play'&&locked&&player&&!clsOpen){e.preventDefault();openChat(e.code==='KeyY');return;}if(e.code==='Tab'){e.preventDefault();if(state==='play'&&locked){tabOn=true;$('lb2').innerHTML=tabHtml();$('tab').classList.remove('hide');}return;}keys[e.code]=true;if(e.code==='KeyQ'&&!e.repeat)switchWeapon();if(e.code==='KeyC'&&!e.repeat&&state==='play'){if(clsOpen)closeCls();else openCls();}if(e.code==='KeyE'&&!e.repeat)cloak();if(e.code==='Space'||(e.ctrlKey&&state==='play'))e.preventDefault();});
 // Browsers can't block Ctrl+W (crouch + forward), so ask before the tab closes mid-match
 addEventListener('beforeunload',e=>{if(state==='play'){e.preventDefault();e.returnValue='';}});
 addEventListener('keyup',e=>{keys[e.code]=false;if(e.code==='Tab'){tabOn=false;$('tab').classList.add('hide');}});
